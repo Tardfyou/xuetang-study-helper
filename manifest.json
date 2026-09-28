@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "学堂在线学习助手",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "正常播放课程视频、结束后切换下一节，并整理作业题目供解析。",
   "content_scripts": [{
     "matches": ["https://www.xuetangx.com/*", "https://xuetangx.com/*"],

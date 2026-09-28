@@ -7,7 +7,8 @@
   root.innerHTML = `
     <style>
       :host{all:initial;position:fixed;right:20px;bottom:20px;z-index:2147483647;font:14px/1.55 system-ui,sans-serif;color:#172237}
-      section{width:310px;background:#fff;border:1px solid #dce3ef;border-radius:14px;box-shadow:0 8px 40px #17223730;padding:16px}
+      section{width:310px;background:#fff;border:1px solid #dce3ef;border-radius:14px;box-shadow:0 8px 40px #17223730;padding:16px;cursor:grab;touch-action:none}
+      section[data-dragging]{cursor:grabbing;user-select:none}input,textarea,select,label,a,button{touch-action:auto}label{cursor:default}textarea{cursor:text}
       header{display:flex;justify-content:space-between;align-items:center}strong{font-size:17px}
       button{font:inherit;cursor:pointer;border:1px solid #dce3ef;border-radius:7px;background:#f5f7fc;color:#172237;padding:7px 10px;margin:4px 3px 4px 0}
       button.primary{background:#235ce6;color:white;border-color:#235ce6}button:disabled{opacity:.5;cursor:default}
@@ -35,6 +36,43 @@
     </section>`;
   document.documentElement.append(host);
   const $ = id => root.getElementById(id);
+  const panel = root.querySelector('section');
+  let drag = null;
+  function positionPanel(left, top) {
+    const rect = panel.getBoundingClientRect();
+    host.style.left = `${Math.max(0, Math.min(left, window.innerWidth - rect.width))}px`;
+    host.style.top = `${Math.max(0, Math.min(top, window.innerHeight - rect.height))}px`;
+    host.style.right = 'auto';
+    host.style.bottom = 'auto';
+  }
+  panel.addEventListener('pointerdown', event => {
+    if (!event.isPrimary || event.button !== 0 || event.target.closest('button,input,textarea,select,label,a')) return;
+    const rect = panel.getBoundingClientRect();
+    drag = {id: event.pointerId, x: event.clientX, y: event.clientY, left: rect.left, top: rect.top};
+    panel.setPointerCapture(event.pointerId);
+    panel.dataset.dragging = '';
+    event.preventDefault();
+  });
+  panel.addEventListener('pointermove', event => {
+    if (!drag || event.pointerId !== drag.id) return;
+    positionPanel(drag.left + event.clientX - drag.x, drag.top + event.clientY - drag.y);
+  });
+  function endDrag(event) {
+    if (!drag || event.pointerId !== drag.id) return;
+    drag = null;
+    delete panel.dataset.dragging;
+    if (panel.hasPointerCapture(event.pointerId)) panel.releasePointerCapture(event.pointerId);
+  }
+  panel.addEventListener('pointerup', endDrag);
+  panel.addEventListener('pointercancel', endDrag);
+  panel.addEventListener('lostpointercapture', endDrag);
+  function keepPanelVisible() {
+    if (!host.style.left) return;
+    const rect = panel.getBoundingClientRect();
+    positionPanel(rect.left, rect.top);
+  }
+  window.addEventListener('resize', keepPanelVisible);
+  new ResizeObserver(keepPanelVisible).observe(panel);
   let running = false, current = null, attempted = false, picking = false;
   let chosen = null, chosenLabel = '', selectedText = '', timer = null;
   const completed = new WeakMap();
