@@ -206,12 +206,34 @@
   };
   const plain = html => new DOMParser().parseFromString(String(html ?? ''), 'text/html').body.textContent.trim();
   const normalize = text => plain(text).replace(/\s+/g, '');
+  const blankSelector = 'input:not([type]),input[type="text"],input[type="number"],textarea,[contenteditable="true"]';
+  function questionText(element) {
+    const copy = element.cloneNode(true);
+    copy.querySelectorAll('button,script,style,input[type="hidden"]').forEach(el => el.remove());
+    copy.querySelectorAll(blankSelector).forEach(el => el.replaceWith(document.createTextNode(' ____ ')));
+    copy.querySelectorAll('img').forEach(el => el.replaceWith(document.createTextNode(`[图片${el.alt ? `：${el.alt}` : ''}]`)));
+    copy.querySelectorAll('br').forEach(el => el.replaceWith(document.createTextNode('\n')));
+    copy.querySelectorAll('p,div,li').forEach(el => el.append(document.createTextNode('\n')));
+    return copy.textContent.replace(/[\t ]+/g, ' ').replace(/ *\n */g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+  }
+  function readPageQuestion() {
+    const questions = [...document.querySelectorAll('.question')].filter(visible);
+    if (questions.length !== 1) return null;
+    const question = questions[0];
+    const stem = question.querySelector('.fuwenben') || question;
+    let text = questionText(stem);
+    const blanks = [...question.querySelectorAll(blankSelector)].filter(visible);
+    const outside = blanks.filter(el => !stem.contains(el));
+    if (outside.length) text += `\n填空位置：${outside.map((el, i) => `第${i + 1}空 ____`).join('；')}`;
+    return text ? {text, body: stem.textContent.trim()} : null;
+  }
   $('read').onclick = async () => {
     const pageUrl = location.href;
-    const body = document.querySelector('.question .fuwenben')?.textContent.trim();
-    if (!/\/exercise\/\d+/.test(location.pathname) || !body) { $('question-status').textContent = '请先打开具体作业题目。'; return; }
+    const question = readPageQuestion();
+    if (!/\/exercise\/\d+/.test(location.pathname) || !question) { $('question-status').textContent = '请先打开唯一可见的具体作业题目。'; return; }
+    $('question').value = question.text;
     const endpoint = performance.getEntriesByType('resource').map(e => e.name).filter(url => url.startsWith(location.origin + '/api/v1/lms/exercise/get_exercise_list/')).pop();
-    if (!endpoint) { $('question-status').textContent = '未发现本页题目请求，请刷新作业页后重试。'; return; }
+    if (!endpoint) { $('question-status').textContent = '已提取页面题干，可直接复制；未发现平台题目请求。'; return; }
     $('read').disabled = true; $('question-status').textContent = '正在只读获取平台题目数据…';
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 12000);
@@ -219,11 +241,12 @@
       const response = await fetch(endpoint, {credentials: 'same-origin', cache: 'no-store', signal: controller.signal});
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const payload = await response.json();
-      if (location.href !== pageUrl || normalize(document.querySelector('.question .fuwenben')?.textContent) !== normalize(body)) throw new Error('题目已切换，请重新读取');
-      const matches = (payload.data?.problems || []).filter(p => normalize(p.content?.Body) === normalize(body));
-      if (matches.length !== 1) throw new Error('无法唯一匹配本题，请刷新作业页后重试');
+      if (location.href !== pageUrl || readPageQuestion()?.text !== question.text) throw new Error('题目已切换，请重新读取');
+      const matches = (payload.data?.problems || []).filter(p => normalize(p.content?.Body) === normalize(question.body));
+      if (matches.length !== 1) { $('question-status').textContent = '已提取页面题干，可直接复制；无法唯一匹配平台数据。'; return; }
       const content = matches[0].content;
-      const lines = [plain(content.Body), ...(content.Options || []).map(o => `${o.key}. ${plain(o.value)}`)];
+      const options = Array.isArray(content.Options) ? content.Options : [];
+      const lines = [question.text, ...options.map(o => `${o.key}. ${plain(o.value)}`)];
       const answerKeys = ['Answer', 'CorrectAnswer', 'correct_answer', 'answer'];
       const explanationKeys = ['Remark', 'Explanation', 'Analysis', 'explanation'];
       const present = keys => keys.filter(k => Object.hasOwn(content, k) && content[k] !== null && content[k] !== '' && !(Array.isArray(content[k]) && !content[k].length));
@@ -231,7 +254,11 @@
       for (const key of [...answerFields, ...explanations]) lines.push(`${key}（平台原始字段）：${typeof content[key] === 'object' ? JSON.stringify(content[key]) : plain(content[key])}`);
       $('question').value = lines.join('\n');
       $('question-status').textContent = answerFields.length ? '已显示平台返回的答案字段，请自行核对含义后提交。' : `平台未返回本题正确答案。${explanations.length ? '已显示平台解析。' : '也未返回解析正文。'}`;
-    } catch (error) { $('question-status').textContent = `读取失败：${error.message}`; }
+    } catch (error) {
+      if (location.href !== pageUrl || readPageQuestion()?.text !== question.text) {
+        $('question').value = ''; $('question-status').textContent = '题目已切换，请重新读取。';
+      } else $('question-status').textContent = `已提取页面题干，可直接复制；平台数据读取失败：${error.message}`;
+    }
     finally { clearTimeout(timeout); $('read').disabled = false; }
   };
   function finishPick() { picking = false; document.removeEventListener('click', pick, true); document.removeEventListener('keydown', escapePick, true); }
