@@ -202,7 +202,7 @@
     const question = $('question').value.trim();
     if (!question) { $('question-status').textContent = '请先提取或粘贴题目。'; return; }
     try { await navigator.clipboard.writeText(question); $('question-status').textContent = '已复制题目。'; }
-    catch { $('question').focus(); $('question').select(); $('question-status').textContent = '剪贴板不可用，已选中题目，请按 ⌘C 复制。'; }
+    catch { $('question').focus(); $('question').select(); $('question-status').textContent = '剪贴板不可用，已选中题目，请按 Ctrl+C（Mac 为 ⌘C）复制。'; }
   };
   const plain = html => new DOMParser().parseFromString(String(html ?? ''), 'text/html').body.textContent.trim();
   const normalize = text => plain(text).replace(/\s+/g, '');
